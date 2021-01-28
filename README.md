@@ -3,7 +3,7 @@
 Code to reproduce the simulated experiments in the paper "Symmetry, Equilibria, and Robustness in Common-Payoff Games."
 
 ## To install:
-`pip install -r requirements.txt`
+`pip install .`
 
 ## To launch the experiments:
 The following command will run the simulated experiments in the paper:
