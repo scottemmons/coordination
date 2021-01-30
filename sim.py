@@ -38,6 +38,8 @@ def get_draws(gamut, coeffs):
             "Must have gamut == 'RandomGame' or gamut == 'CoordinationGame' or gamut == 'CollaborationGame'"
             "but instead have gamut == {}".format(gamut))
 
+    return draws
+
 
 def EU(p, N, draws, coeffs=None):
     """
