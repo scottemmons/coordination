@@ -64,6 +64,24 @@ def EU(p, N, draws, coeffs=None):
     return total
 
 
+def get_mixed_vulnerability(A, result, quality, draws, coeffs, max_pure_payoff):
+    """
+    :param A:
+    :param result: the result of the symmetric strategy optimization
+    :param quality:
+    :param draws:
+    :param coeffs:
+    :param max_pure_payoff:
+    :return: whether or not the result is a mixed strategy, and if so, its epsilon vulnerability
+    """
+    if not np.any(np.isclose(result.x, np.ones(A))) and quality > max_pure_payoff:
+        vulnerability = epsilon_vulnerability(A, result, quality, draws, coeffs)
+        return 1, vulnerability
+    else:
+        vulnerability = -np.inf
+        return 0, vulnerability
+
+
 def epsilon_vulnerability(A, res, quality, draws, coeffs):
     """
     :param A: integer, the number of actions available to each player
@@ -122,13 +140,9 @@ def solve(N, A, t, gamut):
     pure_strategies = np.eye(A)
     pure_payoffs = [EU(p, N, draws, coeffs=coeffs) for p in pure_strategies]
 
-    # if is mixed strategy that beats all pure strategies
-    if not np.any(np.isclose(res.x, np.ones(A))) and quality > max(pure_payoffs):
-        vulnerability = epsilon_vulnerability(A, res, quality, draws, coeffs)
-        return N, A, t, gamut, 1, quality, vulnerability
-    else:
-        vulnerability = -np.inf
-        return N, A, t, gamut, 0, quality, vulnerability
+    # if optimal strategy is mixed, calculate its epsilon vulnerability
+    mixed, vulnerability = get_mixed_vulnerability(A, res, quality, draws, coeffs, max(pure_payoffs))
+    return N, A, t, gamut, mixed, quality, vulnerability
 
 
 def sweep(T, Nmin, Nmax, Amin, Amax, gamut, fname, append=False):
