@@ -47,7 +47,7 @@ def EU(p, N, draws, coeffs=None):
     :param N: integer, the number of players in the game
     :param draws: iterable of floats defining entries of game's payoff matrix
     :param coeffs: list, multinomial coefficients corresponding to symmetric game outcomes
-    :return: the expected utility of the strategy given by p
+    :return: the expected utility of the symmetric strategy profile given by p
     """
     assert len(p) >= 1 and N >= 1
     if coeffs is None:
@@ -64,34 +64,66 @@ def EU(p, N, draws, coeffs=None):
     return total
 
 
-def get_mixed_vulnerability(A, result, quality, draws, coeffs, max_pure_payoff):
+def EU_individual(index, p, N, draws, coeffs):
     """
-    :param A:
-    :param result: the result of the symmetric strategy optimization
-    :param quality:
-    :param draws:
-    :param coeffs:
-    :param max_pure_payoff:
+    :param index: integer, which action the individual will fix
+    :param p: numpy array, a probability distribution over actions for all the other players
+    :param N: integer, the number of players in the game
+    :param draws: iterable of floats defining entries of game's payoff matrix
+    :param coeffs: list, multinomial coefficients corresponding to symmetric game outcomes
+    :return: the expected utility when one players plays the action given by `index` and all others play `p`
+    """
+    draws_individual = []
+    coeffs_individual = []
+    for (coeff, count), draw in zip(coeffs, draws):
+        if coeff[index] == 0:
+            continue
+        # below is a concrete example where index == 0, coeff == (2, 3, 3), N == 8, and count == \binom{8}{2,3,3}
+        # \binom{8}{2,3,3} = 8! / (2! 3! 3!)
+        # \binom{7}{1,3,3} = 7! / (1! 3! 3!) = (2 / 8) * \binom{8}{2,3,3}
+        coeff_individual = list(coeff)
+        coeff_individual[index] -= 1
+        coeff_individual = tuple(coeff_individual)
+        count_individual = int(round(coeff[index] * count / N))
+
+        draws_individual.append(draw)
+        coeffs_individual.append((coeff_individual, count_individual))
+
+    assert len(draws_individual) == len(coeffs_individual) == len(multinomial_coefficients(len(p), N - 1))
+    return EU(p, N - 1, draws_individual, coeffs=coeffs_individual)
+
+
+def get_mixed_vulnerability(N, A, solution, quality, draws, coeffs):
+    """
+    :param N: integer, the number of players in the game
+    :param A: integer, the number of actions available to each player
+    :param solution: the output strategy of the symmetric strategy optimization
+    :param quality: expected payoff of solution, the symmetric optimum
+    :param draws: iterable of floats defining entries of game's payoff matrix
+    :param coeffs: list, multinomial coefficients corresponding to symmetric game outcomes
     :return: whether or not the result is a mixed strategy, and if so, its epsilon vulnerability
     """
-    if not np.any(np.isclose(result.x, np.ones(A))) and quality > max_pure_payoff:
-        vulnerability = epsilon_vulnerability(A, result, quality, draws, coeffs)
+    pure_payoffs = [EU(pure_strategy, N, draws, coeffs=coeffs) for pure_strategy in np.eye(A)]
+    max_pure_payoff = max(pure_payoffs)
+
+    if not np.any(np.isclose(solution, np.ones(A))) and quality > max_pure_payoff:
+        vulnerability = epsilon_vulnerability(A, solution, quality, draws, coeffs)
         return 1, vulnerability
     else:
         vulnerability = -np.inf
         return 0, vulnerability
 
 
-def epsilon_vulnerability(A, res, quality, draws, coeffs):
+def epsilon_vulnerability(A, solution, quality, draws, coeffs):
     """
     :param A: integer, the number of actions available to each player
-    :param res: the result of the symmetric strategy optimization
-    :param quality: expected payoff of symmetric optimum, equal to -res.fun
+    :param solution: the output strategy of the symmetric strategy optimization
+    :param quality: expected payoff of solution, the symmetric optimum
     :param draws: iterable of floats defining entries of game's payoff matrix
     :param coeffs: list, multinomial coefficients corresponding to symmetric game outcomes
     :return: the maximum possible loss in expected utility resulting from epsilon bribes to pure strategies
     """
-    omitted_indices = np.isclose(res.x, np.zeros(A))  # actions outside the support of res.x
+    omitted_indices = np.isclose(solution, np.zeros(A))  # actions outside the support of res.x
     support_draws = [draw for (coeff, _), draw in zip(coeffs, draws) if
                      np.isclose(np.dot(coeff, omitted_indices), 0)]  # payoffs in the support of res.x
     support_min = min(support_draws)  # minimum over outcomes in the support of res.x
@@ -101,20 +133,18 @@ def epsilon_vulnerability(A, res, quality, draws, coeffs):
     return vulnerability
 
 
-def solve(N, A, t, gamut):
+def global_solution(N, A, t, subtrial, gamut, draws, coeffs):
     """
     :param N: integer, the number of players in the game
     :param A: integer, the number of actions available to each player
     :param t: integer, bookkeeping the current trial
+    :param subtrial: integer, bookkeeping the current subtrial
     :param gamut: string, the GAMUT game class
-    :return: analysis (to be logged) of the game's solution
+    :param draws: iterable of floats defining entries of game's payoff matrix
+    :param coeffs: list, multinomial coefficients corresponding to symmetric game outcomes
+    :return: the result of the optimization over symmetric strategies
     """
-    # ensure that parallel threads are independent trials
-    np.random.seed(t)
-
     # optimize expected utility as function of symmetric strategy probability distribution
-    coeffs = list(multinomial_coefficients(A, N).items())
-    draws = get_draws(gamut, coeffs)
     with warnings.catch_warnings():
         # suppress trust-constr's note about special case of linear functions
         # warnings.simplefilter("ignore")
@@ -124,6 +154,7 @@ def solve(N, A, t, gamut):
     # sense check the optimization result
     # print(res.message)
     # assert res.success
+    # TODO(scottemmons): Make edge case where optimization fails compatible with replicator dynamics subtrials
     if not res.success:
         warnings.warn("\nWarning: minimizer failed at N = {}, A = {}, t = {}, gamut = {}".format(N, A, t, gamut))
         print("res = \n{}".format(res))
@@ -131,25 +162,83 @@ def solve(N, A, t, gamut):
         print(
             "Warning: throwing away result because optimization solution summed to {:.4f} at N = {}, A = {}, t = {}".format(
                 np.sum(res.x), N, A, t))
-        return N, A, t, gamut, 0, -np.inf, -np.inf
+        return N, A, t, subtrial, gamut, "global", 0, -np.inf, -np.inf
 
     # expected payoff of symmetric optimum
     quality = -res.fun
 
-    # calculate maximum pure strategy payoff
-    pure_strategies = np.eye(A)
-    pure_payoffs = [EU(p, N, draws, coeffs=coeffs) for p in pure_strategies]
-
     # if optimal strategy is mixed, calculate its epsilon vulnerability
-    mixed, vulnerability = get_mixed_vulnerability(A, res, quality, draws, coeffs, max(pure_payoffs))
-    return N, A, t, gamut, mixed, quality, vulnerability
+    mixed, vulnerability = get_mixed_vulnerability(N, A, res.x, quality, draws, coeffs)
+    return N, A, t, subtrial, gamut, "global", mixed, quality, vulnerability
 
 
-def sweep(T, Nmin, Nmax, Amin, Amax, gamut, fname, append=False):
+def replicator_dynamics(N, A, t, subtrial, gamut, draws, coeffs, iterations=10000, stepsize=1.):
+    """
+    :param N: integer, the number of players in the game
+    :param A: integer, the number of actions available to each player
+    :param t: integer, bookkeeping the current trial
+    :param subtrial: integer, bookkeeping the current subtrial
+    :param gamut: string, the GAMUT game class
+    :param draws: iterable of floats defining entries of game's payoff matrix
+    :param coeffs: list, multinomial coefficients corresponding to symmetric game outcomes
+    :param iterations: integer, how many steps of the replicator dynamics to run
+    :param stepsize: float, coefficient multiplied with the gradient before taking an update step
+    :return: the result of the replicator dynamics
+    """
+    population = np.random.random(A)
+    # uniformly sample simplex
+    population = -np.log(population)
+    population /= population.sum()
+
+    for iteration in range(iterations):
+        individual_fitness = np.array([EU_individual(index, population, N, draws, coeffs) for index in range(A)])
+        average_fitness = EU(population, N, draws, coeffs=coeffs)
+        derivatives = population * (individual_fitness - average_fitness)
+        population += stepsize * derivatives
+        assert np.all(population >= 0)
+        assert np.isclose(population.sum(), 1)
+
+    mixed, vulnerability = get_mixed_vulnerability(N, A, population, average_fitness, draws, coeffs)
+    return N, A, t, subtrial, gamut, "replicator", mixed, average_fitness, vulnerability
+
+
+def solve(N, A, t, subt, gamut):
+    """
+    :param N: integer, the number of players in the game
+    :param A: integer, the number of actions available to each player
+    :param t: integer, bookkeeping the current trial
+    :param subt: integer, the number of subtrials, i.e., the number of different replicator dynamics initializations
+    :param gamut: string, the GAMUT game class
+    :return: analysis (to be logged) of the game's solution
+    """
+    # ensure that parallel threads are independent trials
+    np.random.seed(t)
+
+    # results from the global optimization and from the replicator dynamics subtrials
+    results = []
+
+    # randomly draw a game according to the gamut class
+    coeffs = list(multinomial_coefficients(A, N).items())
+    draws = get_draws(gamut, coeffs)
+
+    # find the globally optimal solution to the game
+    result = global_solution(N, A, t, 0, gamut, draws, coeffs)
+    results.append(result)
+
+    # run replicator dynamics to solve the game
+    for subtrial in range(subt):
+        result = replicator_dynamics(N, A, t, subtrial, gamut, draws, coeffs)
+        results.append(result)
+
+    return results
+
+
+def sweep(T, subt, Nmin, Nmax, Amin, Amax, gamut, fname, append=False):
     """
     Sweep over all experimental parameters and log results to file.
 
-    :param T: integer, number of trials
+    :param T: integer, number of trials, i.e., number of random games drawn for each game configuration
+    :param subt: integer, number of subtrials, i.e., number of different replicator dynamics initializations
     :param Nmin: integer, minimum number of players, trials cover the inclusive range [Nmin, Nmax]
     :param Nmax: integer, maximum number of players. trials cover the inclusive range [Nmin, Nmax]
     :param Amin: integer, minimum number of available actions. trials cover the inclusive range [Amin, Amax]
@@ -161,11 +250,14 @@ def sweep(T, Nmin, Nmax, Amin, Amax, gamut, fname, append=False):
     Ns = range(Nmin, Nmax + 1)
     As = range(Amin, Amax + 1)
 
-    log = RowLogger(fname, columns=["N", "A", "t", "gamut", "mixed", "quality", "vulnerability"], append=append)
-    arguments = [(N, A, t, gamut) for N in Ns for A in As for t in range(T)]
+    log = RowLogger(fname,
+                    columns=["N", "A", "trial", "subtrial", "gamut", "algorithm", "mixed", "quality", "vulnerability"],
+                    append=append)
+    arguments = [(N, A, t, subt, gamut) for N in Ns for A in As for t in range(T)]
     with ProcessPoolExecutor() as executor:
-        for result in executor.map(solve, *zip(*arguments)):
-            log.add(*result)
+        for results in executor.map(solve, *zip(*arguments)):
+            for result in results:
+                log.add(*result)
 
 
 def table(fname, values, pivot=False, to_latex=False):
@@ -184,6 +276,8 @@ def table(fname, values, pivot=False, to_latex=False):
     gamut = data["gamut"][0]
     out_file = root + "_" + gamut + "_" + values + ".tex"
 
+    # TODO(scottemmons): remove the following line and process replicator dynamics results
+    data = data.loc[data["algorithm"] == "global"]
     if values == "quality" or values == "vulnerability":
         data = data.loc[data["mixed"] == 1]
         float_format = "{:.3}".format
@@ -213,7 +307,9 @@ if __name__ == "__main__":
                         help="the fewest number of actions available to each player. the trials cover the inclusive range [actions_min, actions_max]")
     parser.add_argument("--actions_max", default=5, type=int,
                         help="the largest number of actions available to each player. the trials cover the inclusive range [actions_min, actions_max]")
-    parser.add_argument("--trials", default=100, type=int, help="the number of trials to run at each point")
+    parser.add_argument("--trials", default=100, type=int, help="the number of trials to run at each game setting")
+    parser.add_argument("--subtrials", default=10, type=int,
+                        help="the number of different replicator dynamic initializations to run")
     parser.add_argument("--gamut", default="RandomGame",
                         choices=["RandomGame", "CoordinationGame", "CollaborationGame"],
                         help="the class of GAMUT games to consider")
@@ -230,8 +326,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     if not args.nosim:
-        sweep(args.trials, args.players_min, args.players_max, args.actions_min, args.actions_max, args.gamut,
-              args.fname, append=args.append)
+        sweep(args.trials, args.subtrials, args.players_min, args.players_max, args.actions_min, args.actions_max,
+              args.gamut, args.fname, append=args.append)
 
     if args.pivot or args.to_latex:
         table(args.fname, args.values, pivot=args.pivot, to_latex=args.to_latex)
