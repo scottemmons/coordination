@@ -1,12 +1,13 @@
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 import os
 import warnings
+
 import numpy as np
-import pandas as pd
-from concurrent.futures import ProcessPoolExecutor
 from scipy.optimize import minimize
 from sympy.ntheory.multinomial import multinomial_coefficients
 
+from analyze import results_tables
 from logger import RowLogger
 
 
@@ -217,6 +218,8 @@ def solve(N, A, t, subt, gamut):
     # results from the global optimization and from the replicator dynamics subtrials
     results = []
 
+    # TODO(scottemmons): double-check that each result is a local optimum in symmetric strategy space?
+
     # randomly draw a game according to the gamut class
     coeffs = list(multinomial_coefficients(A, N).items())
     draws = get_draws(gamut, coeffs)
@@ -260,43 +263,6 @@ def sweep(T, subt, Nmin, Nmax, Amin, Amax, gamut, fname, append=False):
                 log.add(*result)
 
 
-def table(fname, values, pivot=False, to_latex=False):
-    """
-    Create of table of results.
-
-    :param fname: string, path to + name of results file
-    :param values: string, which data in fname to use to fill results table
-    :param pivot: Boolean, if True will print results
-    :param to_latex: Boolean, if True will write results as table to .tex file
-    """
-    root, ext = os.path.splitext(fname)
-    assert ext == ".csv", "Input file must be in .csv format but instead is {} format".format(ext)
-    data = pd.read_csv(fname)
-    assert data["gamut"].nunique() == 1, "Data in fname should all be from same gamut class"
-    gamut = data["gamut"][0]
-    out_file = root + "_" + gamut + "_" + values + ".tex"
-
-    # TODO(scottemmons): remove the following line and process replicator dynamics results
-    data = data.loc[data["algorithm"] == "global"]
-    if values == "quality" or values == "vulnerability":
-        data = data.loc[data["mixed"] == 1]
-        float_format = "{:.3}".format
-    elif values == "decrease":
-        data = data.loc[data["mixed"] == 1]
-        float_format = "{:.1%}".format
-    else:
-        float_format = "{:.1%}".format
-    data = data.groupby(["N", "A"]).aggregate(np.mean).reset_index()
-    data["unaffected"] = 1 - data["mixed"]
-    data["decrease"] = data["vulnerability"] / data["quality"]
-    data = data.pivot(index="N", columns="A", values=values)
-
-    if pivot:
-        print(data)
-    if to_latex:
-        data.to_latex(buf=out_file, float_format=float_format)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="simulate solutions to symmetric games")
     parser.add_argument("--players_min", default=2, type=int,
@@ -330,4 +296,5 @@ if __name__ == "__main__":
               args.gamut, args.fname, append=args.append)
 
     if args.pivot or args.to_latex:
-        table(args.fname, args.values, pivot=args.pivot, to_latex=args.to_latex)
+        outdir, _ = os.path.split(args.fname)
+        results_tables(args.fname, outdir, pivot=args.pivot, to_latex=args.to_latex)
