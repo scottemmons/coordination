@@ -42,6 +42,18 @@ def get_draws(gamut, coeffs):
     return draws
 
 
+def uniformly_sample_simplex(A):
+    """
+    :param A: integer, the number of actions available to each player
+    :return: a uniformly random draw over probability distributions with A actions
+    """
+    distribution = np.random.random(A)
+    distribution = -np.log(distribution)
+    distribution /= distribution.sum()
+
+    return distribution
+
+
 def EU(p, N, draws, coeffs=None):
     """
     :param p: numpy array, a probability distribution over actions
@@ -149,7 +161,8 @@ def global_solution(N, A, t, subtrial, gamut, draws, coeffs):
     with warnings.catch_warnings():
         # suppress trust-constr's note about special case of linear functions
         # warnings.simplefilter("ignore")
-        res = minimize(lambda p: -EU(p, N, draws, coeffs=coeffs), np.ones(A) / A,  # method="trust-constr",
+        initialization = uniformly_sample_simplex(A)
+        res = minimize(lambda p: -EU(p, N, draws, coeffs=coeffs), initialization,  # method="trust-constr",
                        bounds=[(0, 1)] * A, constraints=({"type": "eq", "fun": lambda x: np.sum(x) - 1}))
 
     # sense check the optimization result
@@ -186,11 +199,7 @@ def replicator_dynamics(N, A, t, subtrial, gamut, draws, coeffs, iterations=1000
     :param stepsize: float, coefficient multiplied with the gradient before taking an update step
     :return: the result of the replicator dynamics
     """
-    population = np.random.random(A)
-    # uniformly sample simplex
-    population = -np.log(population)
-    population /= population.sum()
-
+    population = uniformly_sample_simplex(A)
     for iteration in range(iterations):
         individual_fitness = np.array([EU_individual(index, population, N, draws, coeffs) for index in range(A)])
         average_fitness = EU(population, N, draws, coeffs=coeffs)
@@ -225,8 +234,9 @@ def solve(N, A, t, subt, gamut):
     draws = get_draws(gamut, coeffs)
 
     # find the globally optimal solution to the game
-    result = global_solution(N, A, t, 0, gamut, draws, coeffs)
-    results.append(result)
+    for subtrial in range(subt):
+        result = global_solution(N, A, t, subtrial, gamut, draws, coeffs)
+        results.append(result)
 
     # run replicator dynamics to solve the game
     for subtrial in range(subt):
@@ -275,7 +285,7 @@ if __name__ == "__main__":
                         help="the largest number of actions available to each player. the trials cover the inclusive range [actions_min, actions_max]")
     parser.add_argument("--trials", default=100, type=int, help="the number of trials to run at each game setting")
     parser.add_argument("--subtrials", default=10, type=int,
-                        help="the number of different replicator dynamic initializations to run")
+                        help="the number of different initializations of each optimization to run")
     parser.add_argument("--gamut", default="RandomGame",
                         choices=["RandomGame", "CoordinationGame", "CollaborationGame"],
                         help="the class of GAMUT games to consider")
