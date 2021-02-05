@@ -60,7 +60,7 @@ def max_mixed_table(data):
     table = max_qualities.pivot_table(values="mixed", index="N", columns="A", aggfunc="mean")
 
     pivot_text = "\nFraction of trials for which the best solution we find is mixed:"
-    return table, "max_mixed", "{:.1%}", pivot_text
+    return table, "max_mixed", "{:.2f}", pivot_text
 
 
 def max_decrease_table(data):
@@ -86,7 +86,47 @@ def replicator_mixed_table(data):
     table = replicator.pivot_table(values="mixed", index="N", columns="A", aggfunc="mean")
 
     pivot_text = "\nFraction of replicator dynamics subtrials that are mixed:"
-    return table, "replicator_mixed", "{:.1%}", pivot_text
+    return table, "replicator_mixed", "{:.2f}", pivot_text
+
+
+def algorithm_one_run_optimality(data, algorithm, eps=1e-3):
+    """
+    :param data: DataFrame, containing all experimental results
+    :param algorithm: string, name of the algorithm to query for optimality results
+    :param eps: float, epsilon tolerance when comparing two expected utilities
+    :return: DataFrame, showing what fraction of single algorithm subtrials have maximum quality among all other global
+              and replicator subtrials
+    """
+    algorithm_runs = data.loc[data["algorithm"] == algorithm]
+    max_qualities = get_max_qualities(data)
+
+    for iteration, subtrial in enumerate(algorithm_runs["subtrial"].unique()):
+        new_max = max_qualities.copy()
+        new_max["subtrial"] = subtrial
+        if iteration == 0:
+            max_subtrials = new_max
+        else:
+            max_subtrials = max_subtrials.append(new_max)
+
+    max_subtrials = max_subtrials.reset_index().set_index(["N", "A", "trial", "subtrial"]).sort_index()
+    algorithm_subtrials = algorithm_runs.set_index(["N", "A", "trial", "subtrial"]).sort_index()
+    max_subtrials["quality"] -= eps  # preparing for float comparison
+    algorithm_optimal = algorithm_subtrials > max_subtrials
+    table = algorithm_optimal.pivot_table(values="quality", index="N", columns="A", aggfunc="mean")
+
+    pivot_text = "\nFraction of single {} subtrials that have maximum quality among all other global and replicator " \
+                 "subtrials:".format(algorithm)
+    return table, "{}_one_run_optimality".format(algorithm), "{:.2f}", pivot_text
+
+
+def global_one_run_optimality(data, eps=1e-3):
+    """
+    :param data: DataFrame, containing all experimental results
+    :param eps: float, epsilon tolerance when comparing two expected utilities
+    :return: DataFrame, showing what fraction of single global subtrials have maximum quality among all other global and
+              replicator subtrials
+    """
+    return algorithm_one_run_optimality(data, "global", eps=eps)
 
 
 def replicator_one_run_optimality(data, eps=1e-3):
@@ -96,26 +136,41 @@ def replicator_one_run_optimality(data, eps=1e-3):
     :return: DataFrame, showing what fraction of single replicator dynamics subtrials have maximum quality among all
               other global and replicator subtrials
     """
-    replicator = data.loc[data["algorithm"] == "replicator"]
+    return algorithm_one_run_optimality(data, "replicator", eps=eps)
+
+
+def algorithm_many_run_optimality(data, algorithm, eps=1e-3):
+    """
+    :param data: DataFrame, containing all experimental results
+    :param algorithm: string, name of the algorithm to query for optimization results
+    :param eps: float, epsilon tolerance when comparing two expected utilities
+    :return: DataFrame, showing what fraction of trials have at least one algorithm subtrial achieving maximum quality
+              among all other global and replicator subtrials
+    """
+    algorithm_runs = data.loc[data["algorithm"] == algorithm]
+    algorithm_max = algorithm_runs.groupby(["N", "A", "trial"]).max()
     max_qualities = get_max_qualities(data)
 
-    for iteration, subtrial in enumerate(replicator["subtrial"].unique()):
-        new_max = max_qualities.copy()
-        new_max["subtrial"] = subtrial
-        if iteration == 0:
-            max_subtrials = new_max
-        else:
-            max_subtrials = max_subtrials.append(new_max)
+    algorithm_max.reset_index().set_index(["N", "A", "trial"]).sort_index()
+    max_qualities.reset_index().set_index(["N", "A", "trial"]).sort_index()
+    max_qualities["quality"] -= eps  # preparing for float comparison
+    algorithm_optimal = algorithm_max > max_qualities
+    table = algorithm_optimal.pivot_table(values="quality", index="N", columns="A", aggfunc="mean")
 
-    max_subtrials = max_subtrials.reset_index().set_index(["N", "A", "trial", "subtrial"]).sort_index()
-    replicator_subtrials = replicator.set_index(["N", "A", "trial", "subtrial"]).sort_index()
-    max_subtrials["quality"] -= eps  # preparing for float comparison
-    replicator_optimal = replicator_subtrials > max_subtrials
-    table = replicator_optimal.pivot_table(values="quality", index="N", columns="A", aggfunc="mean")
+    subtrials = len(algorithm_runs["subtrial"].unique())
+    pivot_text = "\nFraction of trials for which at least one of {} {} subtrials achieves maximum quality among all " \
+                 "global and replicator subtrials:".format(subtrials, algorithm)
+    return table, "{}_{}_run_optimality".format(algorithm, subtrials), "{:.2f}", pivot_text
 
-    pivot_text = "\nFraction of single replicator dynamics subtrials that have maximum quality among all other global " \
-                 "and replicator subtrials:"
-    return table, "replicator_one_run_optimality", "{:.1%}", pivot_text
+
+def global_many_run_optimality(data, eps=1e-3):
+    """
+    :param data: DataFrame, containing all experimental results
+    :param eps: float, epsilon tolerance when comparing two expected utilities
+    :return: DataFrame, showing what fraction of trials have at least one global subtrial achieving maximum quality
+              among all other global and replicator subtrials
+    """
+    return algorithm_many_run_optimality(data, "global", eps=eps)
 
 
 def replicator_many_run_optimality(data, eps=1e-3):
@@ -125,20 +180,7 @@ def replicator_many_run_optimality(data, eps=1e-3):
     :return: DataFrame, showing what fraction of trials have at least one replicator dynamics subtrial achieving maximum
               quality among all other global and replicator subtrials
     """
-    replicator = data.loc[data["algorithm"] == "replicator"]
-    replicator_max = replicator.groupby(["N", "A", "trial"]).max()
-    max_qualities = get_max_qualities(data)
-
-    replicator_max.reset_index().set_index(["N", "A", "trial"]).sort_index()
-    max_qualities.reset_index().set_index(["N", "A", "trial"]).sort_index()
-    max_qualities["quality"] -= eps  # preparing for float comparison
-    replicator_optimal = replicator_max > max_qualities
-    table = replicator_optimal.pivot_table(values="quality", index="N", columns="A", aggfunc="mean")
-
-    subtrials = len(replicator["subtrial"].unique())
-    pivot_text = "\nFraction of trials for which at least one of {} replicator dynamics subtrials achieves maximum " \
-                 "quality among all global and replicator subtrials:".format(subtrials)
-    return table, "replicator_{}_run_optimality".format(subtrials), "{:.1%}", pivot_text
+    return algorithm_many_run_optimality(data, "replicator", eps=eps)
 
 
 def table_template(input_file, table_function, pivot=False, to_latex=True, outdir=None):
@@ -183,6 +225,8 @@ def results_tables(fname, outdir, pivot=False, to_latex=True):
     table_template(fname, replicator_mixed_table, pivot=pivot, to_latex=to_latex, outdir=outdir)
     table_template(fname, replicator_one_run_optimality, pivot=pivot, to_latex=to_latex, outdir=outdir)
     table_template(fname, replicator_many_run_optimality, pivot=pivot, to_latex=to_latex, outdir=outdir)
+    table_template(fname, global_one_run_optimality, pivot=pivot, to_latex=to_latex, outdir=outdir)
+    table_template(fname, global_many_run_optimality, pivot=pivot, to_latex=to_latex, outdir=outdir)
 
 
 if __name__ == "__main__":
