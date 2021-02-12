@@ -293,9 +293,6 @@ if __name__ == "__main__":
     parser.add_argument("--append", dest="append", action="store_true", help="append to results already at fname")
     parser.add_argument("--pivot", dest="pivot", action="store_true", help="display pivot table of results")
     parser.add_argument("--to_latex", dest="to_latex", action="store_true", help="write table of results to .tex file")
-    parser.add_argument("--values", default="mixed",
-                        choices=["mixed", "unaffected", "quality", "vulnerability", "decrease"],
-                        help="whether to fill pivot or to_latex table with the percentage of games whose optimal symmetric strategies are mixed (choice == 'mixed'), with the percentage of games whose optimal symmetric strategies are unaffected by payoff perturbation (choice == 'unaffected'), with the expected payoff of the games whose optimal symmetric strategies are mixed (choice == 'quality'), with how vulnerable the games whose optimal symmetric stragies are mixed are to epsilon bribes (choice == 'vulnerability'), or with the percentage decrease in expected utility caused by epsilon bribes in those games (choice == 'decrease')")
     parser.add_argument("--nosim", dest="nosim", action="store_true",
                         help="do not run any simulations but take actions governed by other flags, e.g., pivot")
     parser.set_defaults(append=False, pivot=False, to_latex=False, nosim=False)
