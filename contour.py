@@ -3,8 +3,8 @@ import numpy as np
 
 
 def washing_up_payoff(p, q):
-    """p is the probability of one child doing the laundry and q is the probability of
-    the other child doing the laundry"""
+    """p is the probability of one robot doing the laundry and q is the probability of
+    the other robot doing the laundry"""
     return p * q + 2 * p * (1 - q) + 2 * (1 - p) * q + (1 - p) * (1 - q)
 
 
