@@ -1,6 +1,6 @@
-# Symmetry, Equilibria, and Robustness in Common-Payoff Games
+# For Learning in Symmetric Teams, Local Optima are Global Nash Equilibria
 
-Code to reproduce the simulated experiments in the paper "Symmetry, Equilibria, and Robustness in Common-Payoff Games."
+Code to reproduce the simulated experiments in the paper "For Learning in Symmetric Teams, Local Optima are Global Nash Equilibria"
 
 ## To install:
 `pip install .`

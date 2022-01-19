@@ -8,7 +8,7 @@ def get_readme():
 setuptools.setup(
     name="coordination",
     version="0.1.0",
-    description="Symmetry, Equilibria, and Robustness in Common-Payoff Games",
+    description="For Learning in Symmetric Teams, Local Optima are Global Nash Equilibria",
     long_description=get_readme(),
     long_description_content_type="text/markdown",
     install_requires=[
