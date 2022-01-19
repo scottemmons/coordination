@@ -23,8 +23,8 @@ def create_contour_plot():
             linewidth=10, zorder=1)
     ax.plot([0.5, 0.5], [0, 1], c="blue", linestyle="--", label="Unilateral Deviations from Symmetric Optimum",
             linewidth=10, zorder=1)
-    ax.set_xlabel("Ali's Probability of Laundry")
-    ax.set_ylabel("Bo's Probability of Laundry")
+    ax.set_xlabel("Rob's Probability of Laundry")
+    ax.set_ylabel("Bot's Probability of Laundry")
 
     # remove duplicate legend items, h/t https://stackoverflow.com/a/13589144/3025865
     handles, labels = ax.get_legend_handles_labels()
