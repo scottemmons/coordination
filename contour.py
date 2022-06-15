@@ -3,8 +3,8 @@ import numpy as np
 
 
 def washing_up_payoff(p, q):
-    """p is the probability of one robot doing the laundry and q is the probability of
-    the other robot doing the laundry"""
+    """p is the probability of one taxi driving to work and
+       q is the probability of the other taxi driving to work"""
     return p * q + 2 * p * (1 - q) + 2 * (1 - p) * q + (1 - p) * (1 - q)
 
 
@@ -23,8 +23,8 @@ def create_contour_plot():
             linewidth=10, zorder=1)
     ax.plot([0.5, 0.5], [0, 1], c="blue", linestyle="--", label="Unilateral Deviations from Symmetric Optimum",
             linewidth=10, zorder=1)
-    ax.set_xlabel("Rob's Probability of Laundry")
-    ax.set_ylabel("Bot's Probability of Laundry")
+    ax.set_xlabel("Auto's Probability of Work")
+    ax.set_ylabel("Mobile's Probability of Work")
 
     # remove duplicate legend items, h/t https://stackoverflow.com/a/13589144/3025865
     handles, labels = ax.get_legend_handles_labels()
